@@ -75,5 +75,7 @@ def generate_with_provider(
     elif provider.lower() == "anthropic":
         return generate_with_anthropic(prompt, model, response_schema)
     else:
-        error_msg = f"Unknown provider: {provider}. Supported providers: openai, gemini, anthropic"
+        error_msg = (
+            f"Unknown provider: {provider}. Supported providers: openai or anthropic"
+        )
         raise ValueError(error_msg)

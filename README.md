@@ -1,11 +1,30 @@
 LLM-over-DNS
 ============
 
-Answer DNS TXT queries using an LLM (OpenAI, Anthropic, or Gemini). This lets you query LLMs directly via DNS:
+Answer DNS TXT queries using an LLM (OpenAI or Anthropic). This lets you query LLMs directly via DNS:
 
 ```
-dig @127.0.0.1 -p 5353 what.is.the.meaning.of.life TXT +short
+dig @127.0.0.1 -p 5353 summarize.interstellar.for.me TXT +short
 ```
+
+## Table of Contents
+
+- [How It Works](#how-it-works)
+- [Server Architecture](#server-architecture)
+- [Notes](#notes)
+- [Setup](#setup)
+  - [Quick Start with uv (Recommended)](#quick-start-with-uv-recommended)
+  - [Traditional Python Setup](#traditional-python-setup)
+- [Usage Options](#usage-options)
+  - [Without API Key Protection](#without-api-key-protection)
+  - [With API Key Protection](#with-api-key-protection)
+- [Custom Models](#custom-models)
+- [Response Length Control](#response-length-control)
+- [Running on port 53](#running-on-port-53)
+- [Security](#security)
+  - [API Key Protection (Built-in)](#api-key-protection-built-in)
+  - [Additional Security Measures](#additional-security-measures)
+- [License](#license)
 
 How It Works
 ------------
@@ -14,14 +33,14 @@ This system bridges DNS and LLMs through a clever encoding scheme:
 
 1. **DNS Query**: You send a DNS TXT query where the domain name encodes your question
    ```
-   dig @127.0.0.1 -p 5353 what.is.the.meaning.of.life TXT +short
+   dig @127.0.0.1 -p 5353 summarize.interstellar.for.me TXT +short
    ```
 
-2. **Domain Parsing**: The DNS server extracts the domain labels `["what", "is", "the", "meaning", "of", "life"]`
+2. **Domain Parsing**: The DNS server extracts the domain labels `["summarize", "interstellar", "for", "me"]`
 
-3. **Text Reconstruction**: Labels are joined with spaces to form the question: `"what is the meaning of life"`
+3. **Text Reconstruction**: Labels are joined with spaces to form the question: `"summarize interstellar for me"`
 
-4. **LLM Processing**: The question is sent to your chosen LLM provider (OpenAI, Anthropic, or Gemini)
+4. **LLM Processing**: The question is sent to your chosen LLM provider (OpenAI or Anthropic)
 
 5. **Response Formatting**: The LLM response is chunked to fit DNS TXT record limits (≤255 bytes per string)
 
@@ -47,13 +66,13 @@ The running server handles DNS-to-LLM translation through several components:
 **Text Processing** (`utils/text_formatting.py`):
 - `labels_to_question()`: DNS labels → human-readable question
   - Handles dots, underscores, URL encoding, base64 encoding
-  - Joins labels with spaces: `["what", "is", "life"]` → `"what is life"`
+  - Joins labels with spaces: `["summarize", "interstellar", "for", "me"]` → `"summarize interstellar for me"`
 - `chunk_text_for_txt_record()`: Long text → DNS-compatible chunks
   - Splits responses to fit 255-byte TXT string limits
   - Preserves word boundaries when possible
 
 **LLM Integration** (`utils/ai_providers.py`):
-- `generate_with_provider()`: Routes to OpenAI, Anthropic, or Gemini APIs
+- `generate_with_provider()`: Routes to OpenAI or Anthropic APIs
 - Handles model selection, API key management, error handling
 - Truncates responses to ~400 chars to fit UDP packet limits
 - Returns plain text responses ready for DNS encoding
@@ -69,9 +88,9 @@ The running server handles DNS-to-LLM translation through several components:
 - Demonstrates creative protocol abuse 😉
 
 **Encoding Options:**
-- Dots as spaces: `what.is.life` → `"what is life"`
-- Underscores as spaces: `what_is_life` → `"what is life"`  
-- URL encoding: `what%20is%20life` → `"what is life"`
+- Dots as spaces: `summarize.interstellar.for.me` → `"summarize interstellar for me"`
+- Underscores as spaces: `summarize_interstellar_for_me` → `"summarize interstellar for me"`  
+- URL encoding: `summarize%20interstellar%20for%20me` → `"summarize interstellar for me"`
 - Base64 for complex queries: `b64-encoded_prompt`
 
 Notes
@@ -82,26 +101,52 @@ Notes
 
 Setup
 -----
-1. Python 3.11+
-2. Install dependencies
-3. Set your API key(s) in `.env` file:
+
+### Quick Start with uv (Recommended)
+
+1. **Install [uv](https://docs.astral.sh/uv/)** if you haven't already:
+   ```bash
+   curl -LsSf https://astral.sh/uv/install.sh | sh
    ```
-   OPENAI_API_KEY=your_openai_key_here
-   ANTHROPIC_API_KEY=your_anthropic_key_here
+
+2. **Clone and run** (uv handles Python version and dependencies automatically):
+   ```bash
+   git clone <this-repo-url>
+   cd llm-over-dns
+   ```
+
+3. **Set your API key(s)** in `.env` file:
+   ```bash
+   cp .env.template .env
+   ```
+   Set your API key values
+
+4. **Run the server** (uv automatically manages the environment):
+   ```bash
+   # Basic server
+   uv run main.py --host 0.0.0.0 --port 5353 --provider openai
    
-   # Optional: Enable API key protection
-   DNS_API_KEY=your_secret_access_key
+   # With API key protection
+   uv run main.py --host 0.0.0.0 --port 5353 --provider openai --require-api-key
+   
+   # Other providers
+   uv run main.py --host 0.0.0.0 --port 5353 --provider anthropic
    ```
-4. Run the server:
 
-```
-python main.py --host 0.0.0.0 --port 5353 --provider openai
-python main.py --host 0.0.0.0 --port 5353 --provider anthropic
-python main.py --host 0.0.0.0 --port 5353 --provider gemini
+### Traditional Python Setup
 
-# With API key protection enabled:
-python main.py --host 0.0.0.0 --port 5353 --provider openai --require-api-key
-```
+1. **Python 3.11+**
+2. **Install dependencies:**
+   ```bash
+   pip install -e .
+   # or
+   pip install dnslib openai anthropic python-dotenv
+   ```
+3. **Set API keys** (same as above)
+4. **Run the server:**
+   ```bash
+   python main.py --host 0.0.0.0 --port 5353 --provider openai --require-api-key
+   ```
 
 Usage Options
 -------------
@@ -110,17 +155,17 @@ Usage Options
 
 **Option 1: Dots as word separators**
 ```
-dig @127.0.0.1 -p 5353 what.is.the.meaning.of.life TXT +short
+dig @127.0.0.1 -p 5353 summarize.interstellar.for.me TXT +short
 ```
 
 **Option 2: Underscores as spaces (more natural)**
 ```
-dig @127.0.0.1 -p 5353 what_is_the_meaning_of_life TXT +short
+dig @127.0.0.1 -p 5353 summarize_interstellar_for_me TXT +short
 ```
 
 **Option 3: URL-encoded spaces**
 ```
-dig @127.0.0.1 -p 5353 what%20is%20the%20meaning%20of%20life TXT +short
+dig @127.0.0.1 -p 5353 summarize%20interstellar%20for%20me TXT +short
 ```
 
 **Option 4: Base64url-encoded prompt (for complex queries)**
@@ -141,12 +186,12 @@ When `--require-api-key` is enabled, queries must include the API key as the fir
 
 **Basic authenticated query:**
 ```
-dig @127.0.0.1 -p 5353 key-your_secret_key.what.is.the.meaning.of.life TXT +short
+dig @127.0.0.1 -p 5353 key-your_secret_key.summarize.interstellar.for.me TXT +short
 ```
 
 **With underscores:**
 ```
-dig @127.0.0.1 -p 5353 key-your_secret_key.what_is_the_meaning_of_life TXT +short
+dig @127.0.0.1 -p 5353 key-your_secret_key.summarize_interstellar_for_me TXT +short
 ```
 
 **With base64 encoding:**
@@ -157,10 +202,10 @@ dig @127.0.0.1 -p 5353 key-your_secret_key.b64-$ENC TXT +short
 **Unauthorized queries will return REFUSED:**
 ```bash
 # Without API key (will fail)
-dig @127.0.0.1 -p 5353 what.is.life TXT +short
+dig @127.0.0.1 -p 5353 summarize.interstellar.for.me TXT +short
 
 # With wrong API key (will fail)
-dig @127.0.0.1 -p 5353 key-wrong_key.what.is.life TXT +short
+dig @127.0.0.1 -p 5353 key-wrong_key.summarize.interstellar.for.me TXT +short
 ```
 
 Custom Models
@@ -169,8 +214,7 @@ Override default models:
 
 ```
 python main.py --provider openai --model gpt-4o
-python main.py --provider anthropic --model claude-3-5-sonnet-20241022
-python main.py --provider gemini --model gemini-1.5-pro
+python main.py --provider anthropic --model claude-3-7-sonnet-20250219
 ```
 
 Response Length Control
@@ -228,4 +272,4 @@ Enable with `--require-api-key` flag and set `DNS_API_KEY` in your `.env` file:
 
 License
 -------
-MIT
+Apache
