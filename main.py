@@ -7,7 +7,11 @@ from dnslib import CLASS, QTYPE, RCODE, RR, TXT, DNSRecord
 from dnslib.server import DNSServer, BaseResolver, DNSLogger
 
 from utils.ai_providers import generate_with_provider
-from utils.text_formatting import chunk_text_for_txt_record, labels_to_question
+from utils.text_formatting import (
+    chunk_text_for_txt_record,
+    extract_api_key_and_question,
+)
+from config import DNS_API_KEY
 
 
 class LLMResolver(BaseResolver):
@@ -16,11 +20,13 @@ class LLMResolver(BaseResolver):
         provider_name: str,
         model: Optional[str] = None,
         max_output_chars: int = 800,
+        require_api_key: bool = False,
     ):
         self.provider_name = provider_name
         self.model = model
         # Keep payload small enough for UDP (~512 bytes). 800 chars split into 4x200-byte TXT chunks.
         self.max_output_chars = max_output_chars
+        self.require_api_key = require_api_key
 
     def llm_answer(self, question: str) -> str:
         answer = generate_with_provider(
@@ -49,7 +55,21 @@ class LLMResolver(BaseResolver):
             reply.header.rcode = RCODE.NOTIMP
             return reply
 
-        question = labels_to_question(qname)
+        # Extract API key and question from the DNS query
+        provided_api_key, question = extract_api_key_and_question(qname)
+
+        # Check API key authentication if required
+        if self.require_api_key:
+            if not DNS_API_KEY:
+                # Server misconfiguration: API key required but not set
+                reply.header.rcode = RCODE.SERVFAIL
+                return reply
+
+            if provided_api_key != DNS_API_KEY:
+                # Authentication failed - return REFUSED
+                reply.header.rcode = RCODE.REFUSED
+                return reply
+
         answer = self.llm_answer(question)
 
         txt_chunks = chunk_text_for_txt_record(answer, max_chunk_bytes=200)
@@ -71,8 +91,9 @@ def run_server(
     provider_name: str,
     model: Optional[str] = None,
     max_output_chars: int = 800,
+    require_api_key: bool = False,
 ) -> None:
-    resolver = LLMResolver(provider_name, model, max_output_chars)
+    resolver = LLMResolver(provider_name, model, max_output_chars, require_api_key)
 
     logger = DNSLogger(prefix=False)
     udp_server = DNSServer(resolver, port=port, address=host, logger=logger)
@@ -136,6 +157,11 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
         default=None,
         help="Optional system prompt prefix",
     )
+    parser.add_argument(
+        "--require-api-key",
+        action="store_true",
+        help="Require API key authentication for queries (set DNS_API_KEY in .env)",
+    )
     return parser.parse_args(argv)
 
 
@@ -148,6 +174,7 @@ def main() -> None:
         provider_name=args.provider,
         model=args.model,
         max_output_chars=args.max_chars,
+        require_api_key=args.require_api_key,
     )
 
 

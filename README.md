@@ -84,17 +84,29 @@ Setup
 -----
 1. Python 3.11+
 2. Install dependencies
-3. Set your API key(s)
+3. Set your API key(s) in `.env` file:
+   ```
+   OPENAI_API_KEY=your_openai_key_here
+   ANTHROPIC_API_KEY=your_anthropic_key_here
+   
+   # Optional: Enable API key protection
+   DNS_API_KEY=your_secret_access_key
+   ```
 4. Run the server:
 
 ```
 python main.py --host 0.0.0.0 --port 5353 --provider openai
 python main.py --host 0.0.0.0 --port 5353 --provider anthropic
 python main.py --host 0.0.0.0 --port 5353 --provider gemini
+
+# With API key protection enabled:
+python main.py --host 0.0.0.0 --port 5353 --provider openai --require-api-key
 ```
 
 Usage Options
 -------------
+
+### Without API Key Protection
 
 **Option 1: Dots as word separators**
 ```
@@ -121,6 +133,34 @@ print(base64.urlsafe_b64encode(s).decode().rstrip('='))
 PY
 )
 dig @127.0.0.1 -p 5353 b64-$ENC TXT +short
+```
+
+### With API Key Protection
+
+When `--require-api-key` is enabled, queries must include the API key as the first DNS label with `key-` prefix:
+
+**Basic authenticated query:**
+```
+dig @127.0.0.1 -p 5353 key-your_secret_key.what.is.the.meaning.of.life TXT +short
+```
+
+**With underscores:**
+```
+dig @127.0.0.1 -p 5353 key-your_secret_key.what_is_the_meaning_of_life TXT +short
+```
+
+**With base64 encoding:**
+```
+dig @127.0.0.1 -p 5353 key-your_secret_key.b64-$ENC TXT +short
+```
+
+**Unauthorized queries will return REFUSED:**
+```bash
+# Without API key (will fail)
+dig @127.0.0.1 -p 5353 what.is.life TXT +short
+
+# With wrong API key (will fail)
+dig @127.0.0.1 -p 5353 key-wrong_key.what.is.life TXT +short
 ```
 
 Custom Models
@@ -172,10 +212,19 @@ sudo python main.py --port 53 --provider anthropic
 Security
 --------
 This is a demo. Exposing an LLM-backed DNS to the public Internet can be costly and abused. Consider:
+
+### API Key Protection (Built-in)
+Enable with `--require-api-key` flag and set `DNS_API_KEY` in your `.env` file:
+- Only requests with the correct API key will receive responses
+- Unauthorized requests get DNS REFUSED response
+- API key is embedded in the DNS query itself: `key-your_secret_key.your.question`
+
+### Additional Security Measures
 - Rate limiting per source IP
-- Request authentication or allowlist
+- Firewall rules to restrict access
 - Model output length limits (already implemented)
 - Observability/logging
+- Regular API key rotation
 
 License
 -------
