@@ -1,6 +1,8 @@
 LLM-over-DNS
 ============
 
+## Purpose
+
 Answer DNS TXT queries using an LLM (OpenAI or Anthropic). This lets you query LLMs directly via DNS:
 
 ```
